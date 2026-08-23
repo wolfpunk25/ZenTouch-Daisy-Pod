@@ -6,6 +6,11 @@
 #include "zen_scales.h"
 #include <cstdlib>
 
+// Set to 1 to report knob positions and slot selections over USB serial. Off by
+// default: it costs flash we are short of, and prints continuously while you
+// play. Read it with `cat /dev/cu.usbmodem*` after `stty -f <port> 115200 raw`.
+#define ZEN_DEBUG 0
+
 using namespace daisy;
 using namespace daisysp;
 using namespace zen;
@@ -239,7 +244,9 @@ int main(void)
 {
     pod.Init();
     pod.SetAudioBlockSize(48);
+#if ZEN_DEBUG
     pod.seed.StartLog(false);
+#endif
 
     const float sr = pod.AudioSampleRate();
 
@@ -252,10 +259,41 @@ int main(void)
     pod.StartAudio(AudioCallback);
     pod.midi.StartReceive();
 
+#if ZEN_DEBUG
+    int      last_voice = -1, last_scale = -1, last_k1 = -1;
+    uint32_t last_report = 0;
+#endif
+
     while(1)
     {
         pod.midi.Listen();
         while(pod.midi.HasEvents())
             HandleMidi(pod.midi.PopEvent());
+
+#if ZEN_DEBUG
+        // Sample on a timer rather than on change, and report the raw knob
+        // reading, so a slot that is never selected can be told apart from one
+        // the logger merely missed.
+        const uint32_t now = System::GetNow();
+        if(now - last_report >= 200)
+        {
+            last_report      = now;
+            const Params& p  = ui.params();
+            const int     k1 = static_cast<int>(pod.GetKnobValue(DaisyPod::KNOB_1) * 1000.0f);
+            const int     k2 = static_cast<int>(pod.GetKnobValue(DaisyPod::KNOB_2) * 1000.0f);
+            if(p.voice_slot != last_voice || p.scale_slot != last_scale
+               || k1 != last_k1)
+            {
+                last_voice = p.voice_slot;
+                last_scale = p.scale_slot;
+                last_k1    = k1;
+                pod.seed.PrintLine("k1=%d k2=%d | voice %d %s | scale %d | seen v=%x s=%x",
+                                   k1, k2, p.voice_slot, kVoices[p.voice_slot].name,
+                                   p.scale_slot,
+                                   static_cast<int>(ui.VisitedVoices()),
+                                   static_cast<int>(ui.VisitedScales()));
+            }
+        }
+#endif
     }
 }

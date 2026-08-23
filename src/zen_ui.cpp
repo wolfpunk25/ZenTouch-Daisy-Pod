@@ -144,6 +144,9 @@ void Ui::Update()
     params_.scale_slot
         = SlotWithHysteresis(params_.scale, kNumScales, params_.scale_slot);
 
+    visited_voices_ |= (1u << params_.voice_slot);
+    visited_scales_ |= (1u << params_.scale_slot);
+
     UpdateLeds();
 }
 

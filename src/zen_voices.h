@@ -42,14 +42,24 @@ static constexpr VoicePreset kVoices[kNumVoices] = {
 };
 
 // Character feature constants.
+//
+// Slots 4-7 (Lullaby, Clarity, Hymn, Stardust) all sit at brightness 0.90-1.00
+// and decay 0.90-0.97, so on this hardware they are told apart almost entirely
+// by the feature below rather than by tone. The three modulated ones are
+// therefore pushed past the manual's figures until they actually carry;
+// Clarity keeps no feature at all and stays the plain reference of the four.
+//
+// The rates are unchanged -- it is the depths that were too polite.
 static constexpr float kPitchDipCents   = -55.0f;
 static constexpr float kPitchDipMs      = 170.0f;
 static constexpr float kAttackSwellMs   = 35.0f;
 static constexpr float kTremoloHz       = 3.0f;
-static constexpr float kTremoloDepth    = 0.35f;
+static constexpr float kTremoloDepth    = 0.60f; // was 0.35: ~8dB pulse, not ~3.7dB
 static constexpr float kVibratoHz       = 5.5f;
-static constexpr float kVibratoCents    = 20.0f;
+static constexpr float kVibratoCents    = 35.0f; // was 20: sings without wobbling
 static constexpr float kVibratoRampMs   = 120.0f;
-static constexpr float kShimmerAmount   = 0.03f;
+static constexpr float kShimmerAmount   = 0.050f; // was 0.03; the string's own
+                                                  // feedback multiplies this, so
+                                                  // raise it cautiously
 
 } // namespace zen

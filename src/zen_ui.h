@@ -71,6 +71,11 @@ class Ui
 
     Page page() const { return page_; }
 
+    // Diagnostics: every slot the control loop has selected since boot,
+    // accumulated at control rate so nothing is lost to slow logging.
+    uint32_t VisitedVoices() const { return visited_voices_; }
+    uint32_t VisitedScales() const { return visited_scales_; }
+
     // Momentary white flash on LED 2 whenever a note fires.
     void NoteFlash() { note_flash_ = 1.0f; }
 
@@ -88,6 +93,9 @@ class Ui
 
     bool  caught_[2]   = {false, false};
     float last_raw_[2] = {0.0f, 0.0f};
+
+    uint32_t visited_voices_ = 0;
+    uint32_t visited_scales_ = 0;
 
     float note_flash_ = 0.0f;
     float page_flash_ = 0.0f;
