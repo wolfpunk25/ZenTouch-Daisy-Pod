@@ -58,8 +58,8 @@ static constexpr float kTremoloDepth    = 0.60f; // was 0.35: ~8dB pulse, not ~3
 static constexpr float kVibratoHz       = 5.5f;
 static constexpr float kVibratoCents    = 35.0f; // was 20: sings without wobbling
 static constexpr float kVibratoRampMs   = 120.0f;
-static constexpr float kShimmerAmount   = 0.050f; // was 0.03; the string's own
-                                                  // feedback multiplies this, so
-                                                  // raise it cautiously
+// 0.05 was too far: injected continuously into a loop at 0.96 decay, the
+// level builds rather than settling. Sanitize() now bounds it either way.
+static constexpr float kShimmerAmount   = 0.035f;
 
 } // namespace zen

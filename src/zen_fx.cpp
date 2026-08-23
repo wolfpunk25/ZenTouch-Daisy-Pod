@@ -1,4 +1,5 @@
 #include "zen_fx.h"
+#include "zen_util.h"
 #include "dev/sdram.h"
 #include <cmath>
 
@@ -59,7 +60,9 @@ void Fx::Init(float sample_rate)
 float Fx::ProcessLimiter(float& l, float& r)
 {
     // Stereo-linked peak limiter: instant attack, exponential release.
-    const float peak   = fmaxf(fabsf(l), fabsf(r));
+    l = Sanitize(l);
+    r = Sanitize(r);
+    const float peak = fmaxf(fabsf(l), fabsf(r));
     const float target = (peak > kLimitThresh) ? (kLimitThresh / peak) : 1.0f;
 
     if(target < limit_gain_)
@@ -75,6 +78,8 @@ float Fx::ProcessLimiter(float& l, float& r)
 void Fx::Process(float dry_mono, float in_l, float in_r, float* out_l, float* out_r)
 {
     // --- Resonance: additive body colour, still mono. ---
+    dry_mono = Sanitize(dry_mono);
+
     body_.Process(dry_mono);
     hole_.Process(dry_mono);
     const float res_wet = (body_.Band() + hole_.Band()) * resonance_;
@@ -96,15 +101,15 @@ void Fx::Process(float dry_mono, float in_l, float in_r, float* out_l, float* ou
     const float fb_r = echo_damp_r_.Low();
 
     // Cross-feed is what makes the repeats walk across the image.
-    echo_line_l.Write(l + fb_r * kEchoFeedback);
-    echo_line_r.Write(r + fb_l * kEchoFeedback);
+    echo_line_l.Write(Sanitize(l + fb_r * kEchoFeedback));
+    echo_line_r.Write(Sanitize(r + fb_l * kEchoFeedback));
 
     l += tap_l * echo_;
     r += tap_r * echo_;
 
     // --- Line in, summed after local FX and before the limiter. ---
-    l += in_l;
-    r += in_r;
+    l += Sanitize(in_l);
+    r += Sanitize(in_r);
 
     // --- Limiter, then volume, so the ceiling is fixed regardless of level. ---
     ProcessLimiter(l, r);

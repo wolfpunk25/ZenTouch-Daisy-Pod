@@ -1,4 +1,5 @@
 #include "zen_voice.h"
+#include "zen_util.h"
 #include <cmath>
 #include <cstdlib>
 
@@ -182,7 +183,7 @@ float Voice::Process()
         out *= fade_gain_;
     }
 
-    return out;
+    return Sanitize(out);
 }
 
 } // namespace zen
