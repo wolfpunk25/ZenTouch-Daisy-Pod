@@ -19,11 +19,16 @@ using namespace zen;
 // The synthesis, scales, and effects follow the published ZenTouch spec.
 // ---------------------------------------------------------------------------
 
-static constexpr int kMaxVoices = 5; // manual: up to five simultaneous voices
+// The manual caps *live* polyphony at five, and says already-fading voices
+// release their slot and stop counting against the cap. That only works if the
+// physical pool is bigger than the cap, so a stolen voice can finish its 30 ms
+// fade in its own slot while the note that displaced it starts immediately.
+static constexpr int kLiveVoices = 5; // cap on non-fading voices
+static constexpr int kVoicePool  = 8; // physical slots, including fade-outs
 static constexpr int kRootNote  = 48; // C3, the Touch 2's tine-0 root
 
 static DaisyPod pod;
-static Voice    voices[kMaxVoices];
+static Voice    voices[kVoicePool];
 static Fx       fx;
 static Ui       ui;
 
@@ -52,33 +57,51 @@ static void PushNote(uint8_t note, uint8_t velocity)
 
 // --- Voice allocation -------------------------------------------------------
 
-// Prefer a free slot; otherwise fade the oldest voice that is not already on
-// its way out. Voices that are already fading have effectively released their
-// slot and do not count against the cap.
+// Find the oldest voice matching a predicate, or -1.
+template <typename Pred>
+static int OldestVoice(Pred keep)
+{
+    int      idx = -1;
+    uint32_t age = 0;
+    for(int i = 0; i < kVoicePool; i++)
+    {
+        if(!keep(voices[i]))
+            continue;
+        if(idx < 0 || voices[i].Age() > age)
+        {
+            age = voices[i].Age();
+            idx = i;
+        }
+    }
+    return idx;
+}
+
+// Always returns a voice to play into. If the live cap is already reached, the
+// oldest live voice is sent into its fade first -- it keeps sounding in its own
+// slot while the new note starts cleanly in another one.
 static Voice* AllocateVoice()
 {
-    for(int i = 0; i < kMaxVoices; i++)
+    int live = 0;
+    for(int i = 0; i < kVoicePool; i++)
+        if(voices[i].IsActive() && !voices[i].IsFading())
+            live++;
+
+    if(live >= kLiveVoices)
+    {
+        const int steal
+            = OldestVoice([](const Voice& v) { return v.IsActive() && !v.IsFading(); });
+        if(steal >= 0)
+            voices[steal].FadeOut();
+    }
+
+    for(int i = 0; i < kVoicePool; i++)
         if(!voices[i].IsActive())
             return &voices[i];
 
-    int      oldest_idx = -1;
-    uint32_t oldest_age = 0;
-    for(int i = 0; i < kMaxVoices; i++)
-    {
-        if(voices[i].IsFading())
-            continue;
-        if(voices[i].Age() >= oldest_age)
-        {
-            oldest_age = voices[i].Age();
-            oldest_idx = i;
-        }
-    }
-
-    if(oldest_idx < 0)
-        return nullptr; // everything is already fading; let them finish
-
-    voices[oldest_idx].FadeOut();
-    return nullptr; // the slot frees up once the fade lands
+    // Every physical slot is mid-fade. Take the oldest; NoteOn resets the
+    // string, so the worst case is a small click rather than a dropped note.
+    const int idx = OldestVoice([](const Voice& v) { return v.IsActive(); });
+    return (idx >= 0) ? &voices[idx] : &voices[0];
 }
 
 // Each NoteOn gets +/-8 percent trigger variation so repeated taps never feel
@@ -151,7 +174,7 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     ui.Update();
 
     if(ui.PanicRequested())
-        for(int i = 0; i < kMaxVoices; i++)
+        for(int i = 0; i < kVoicePool; i++)
             voices[i].FadeOut();
 
     // Drain any notes the MIDI parser queued since the last block.
@@ -172,7 +195,7 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     for(size_t i = 0; i < size; i++)
     {
         float dry = 0.0f;
-        for(int v = 0; v < kMaxVoices; v++)
+        for(int v = 0; v < kVoicePool; v++)
             dry += voices[v].Process();
         dry *= 0.4f; // headroom for five voices before the FX bus
 
@@ -202,7 +225,7 @@ static void HandleMidi(MidiEvent m)
         {
             ControlChangeEvent e = m.AsControlChange();
             if(e.control_number == 123) // All Notes Off
-                for(int i = 0; i < kMaxVoices; i++)
+                for(int i = 0; i < kVoicePool; i++)
                     voices[i].FadeOut();
             break;
         }
@@ -220,7 +243,7 @@ int main(void)
 
     const float sr = pod.AudioSampleRate();
 
-    for(int i = 0; i < kMaxVoices; i++)
+    for(int i = 0; i < kVoicePool; i++)
         voices[i].Init(sr);
     fx.Init(sr);
     ui.Init(&pod);
