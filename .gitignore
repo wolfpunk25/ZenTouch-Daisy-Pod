@@ -1,0 +1,7 @@
+build/
+*.o
+*.d
+*.elf
+*.map
+*.lst
+.DS_Store

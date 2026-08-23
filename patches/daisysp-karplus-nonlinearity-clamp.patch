@@ -1,0 +1,13 @@
+diff --git a/Source/PhysicalModeling/KarplusString.cpp b/Source/PhysicalModeling/KarplusString.cpp
+index 8fa4a43..13c1b3c 100644
+--- a/Source/PhysicalModeling/KarplusString.cpp
++++ b/Source/PhysicalModeling/KarplusString.cpp
+@@ -63,7 +63,7 @@ void String::SetFreq(float freq)
+ 
+ void String::SetNonLinearity(float non_linearity_amount)
+ {
+-    non_linearity_amount_ = fclamp(non_linearity_amount, 0.f, 1.f);
++    non_linearity_amount_ = fclamp(non_linearity_amount, -1.f, 1.f);
+ }
+ 
+ void String::SetBrightness(float brightness)
