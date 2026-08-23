@@ -187,9 +187,13 @@ void Ui::UpdateLeds()
 
     pod_->UpdateLeds();
 
-    // Decay the transient flashes. Update() runs once per audio block.
-    note_flash_ *= 0.85f;
-    page_flash_ *= 0.90f;
+    // Decay the transient flashes. Update() runs once per audio block, which
+    // at a 48-sample block and 48 kHz is once a millisecond -- so these
+    // coefficients are per-millisecond and put the note flash at roughly
+    // 150 ms and the page flash at roughly 250 ms. Anything much faster is
+    // too brief to catch while you are actually playing.
+    note_flash_ *= 0.980f;
+    page_flash_ *= 0.988f;
 }
 
 } // namespace zen
