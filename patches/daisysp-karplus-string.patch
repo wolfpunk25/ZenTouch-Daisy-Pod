@@ -1,0 +1,121 @@
+diff --git a/Source/PhysicalModeling/KarplusString.cpp b/Source/PhysicalModeling/KarplusString.cpp
+index 8fa4a43..129bac0 100644
+--- a/Source/PhysicalModeling/KarplusString.cpp
++++ b/Source/PhysicalModeling/KarplusString.cpp
+@@ -13,6 +13,7 @@ void String::Init(float sample_rate)
+     non_linearity_amount_ = .5f;
+     brightness_           = .5f;
+     damping_              = .5f;
++    coeffs_dirty_         = true;
+ 
+     string_.Init();
+     stretch_.Init();
+@@ -63,23 +64,52 @@ void String::SetFreq(float freq)
+ 
+ void String::SetNonLinearity(float non_linearity_amount)
+ {
+-    non_linearity_amount_ = fclamp(non_linearity_amount, 0.f, 1.f);
++    non_linearity_amount_ = fclamp(non_linearity_amount, -1.f, 1.f);
+ }
+ 
+ void String::SetBrightness(float brightness)
+ {
+-    brightness_ = fclamp(brightness, 0.f, 1.f);
++    brightness_   = fclamp(brightness, 0.f, 1.f);
++    coeffs_dirty_ = true;
+ }
+ 
+ void String::SetDamping(float damping)
+ {
+-    damping_ = fclamp(damping, 0.f, 1.f);
++    damping_      = fclamp(damping, 0.f, 1.f);
++    coeffs_dirty_ = true;
++}
++
++void String::UpdateDampingCoefficients()
++{
++    coeffs_dirty_ = false;
++
++    float brightness = brightness_;
++    float damping_cutoff
++        = fmin(12.0f + damping_ * damping_ * 60.0f + brightness * 24.0f, 84.0f);
++
++    cached_damp_pow_ = powf(2.f, damping_cutoff * kOneTwelfth);
++
++    // Crossfade to infinite decay.
++    cached_to_infinite_ = 0.0f;
++    if(damping_ >= 0.95f)
++    {
++        cached_to_infinite_ = 20.0f * (damping_ - 0.95f);
++        brightness += cached_to_infinite_ * (1.0f - brightness);
++        damping_cutoff += cached_to_infinite_ * (128.0f - damping_cutoff);
++    }
++    cached_brightness_ = brightness;
++
++    const float ratio         = powf(2.f, damping_cutoff * kOneTwelfth);
++    cached_damp_compensation_ = 1.f - 2.f * atanf(1.f / ratio) / (TWOPI_F);
+ }
+ 
+ template <String::StringNonLinearity non_linearity>
+ float String::ProcessInternal(const float in)
+ {
+-    float brightness = brightness_;
++    if(coeffs_dirty_)
++        UpdateDampingCoefficients();
++
++    const float brightness = cached_brightness_;
+ 
+     float delay = 1.0f / frequency_;
+     delay       = fclamp(delay, 4.f, kDelayLineSize - 4.0f);
+@@ -96,25 +126,14 @@ float String::ProcessInternal(const float in)
+         src_ratio  = 1.0f;
+     }
+ 
+-    float damping_cutoff
+-        = fmin(12.0f + damping_ * damping_ * 60.0f + brightness * 24.0f, 84.0f);
+-    float damping_f
+-        = fmin(frequency_ * powf(2.f, damping_cutoff * kOneTwelfth), 0.499f);
+-
+-    // Crossfade to infinite decay.
+-    if(damping_ >= 0.95f)
+-    {
+-        float to_infinite = 20.0f * (damping_ - 0.95f);
+-        brightness += to_infinite * (1.0f - brightness);
+-        damping_f += to_infinite * (0.4999f - damping_f);
+-        damping_cutoff += to_infinite * (128.0f - damping_cutoff);
+-    }
++    // Only damping_f still varies per sample, through frequency_.
++    float damping_f = fmin(frequency_ * cached_damp_pow_, 0.499f);
++    if(cached_to_infinite_ > 0.0f)
++        damping_f += cached_to_infinite_ * (0.4999f - damping_f);
+ 
+-    float temp_f = damping_f;
+-    iir_damping_filter_.SetFrequency(temp_f);
++    iir_damping_filter_.SetFrequency(damping_f);
+ 
+-    float ratio                = powf(2.f, damping_cutoff * kOneTwelfth);
+-    float damping_compensation = 1.f - 2.f * atanf(1.f / ratio) / (TWOPI_F);
++    const float damping_compensation = cached_damp_compensation_;
+ 
+     float stretch_point
+         = non_linearity_amount_ * (2.0f - non_linearity_amount_) * 0.225f;
+diff --git a/Source/PhysicalModeling/KarplusString.h b/Source/PhysicalModeling/KarplusString.h
+index 8fcec4e..6fa1513 100644
+--- a/Source/PhysicalModeling/KarplusString.h
++++ b/Source/PhysicalModeling/KarplusString.h
+@@ -89,6 +89,15 @@ class String
+ 
+     float frequency_, non_linearity_amount_, brightness_, damping_;
+ 
++    /** Cached damping coefficients. damping_cutoff depends only on damping_
++        and brightness_, so the two powf and the atanf derived from it are
++        constant between parameter changes. Recomputing them every sample cost
++        roughly half the per-voice budget. */
++    float cached_damp_pow_, cached_damp_compensation_, cached_brightness_,
++        cached_to_infinite_;
++    bool  coeffs_dirty_;
++    void  UpdateDampingCoefficients();
++
+     float sample_rate_;
+ 
+     OnePole iir_damping_filter_;

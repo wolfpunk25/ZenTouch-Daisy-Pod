@@ -68,17 +68,27 @@ Requires an `arm-none-eabi` toolchain on `PATH`.
 
 ```bash
 git submodule update --init --recursive
-git apply --directory=DaisySP patches/daisysp-karplus-nonlinearity-clamp.patch
+git apply --directory=DaisySP patches/daisysp-karplus-string.patch
 make -C libDaisy && make -C DaisySP && make
 ```
 
 ### The DaisySP patch is required
 
-`daisysp::String::SetNonLinearity` clamps its argument to `0..1`, while
-`String::Process` selects the curved-bridge mode on **negative** values and the
-header documents the range as `-1 to 1`. The curved-bridge branch is therefore
-unreachable upstream. Three ZenTouch voices — Halo (−0.10), Stardust (−0.25) and
-Hymn (−0.45) — depend on it, so `patches/` widens the clamp to `-1..1`.
+`patches/daisysp-karplus-string.patch` carries two fixes to `KarplusString`.
+
+**Unreachable curved-bridge mode.** `SetNonLinearity` clamps its argument to
+`0..1`, while `Process` selects the curved-bridge mode on **negative** values
+and the header documents the range as `-1 to 1`. The branch is unreachable
+upstream. Three ZenTouch voices — Halo (−0.10), Stardust (−0.25) and Hymn
+(−0.45) — depend on it, so the clamp is widened to `-1..1`.
+
+**Per-sample recomputation of constants.** `ProcessInternal` derived
+`damping_cutoff` from `damping_` and `brightness_` on every sample, then spent
+two `powf` and an `atanf` on it — despite both inputs only changing when a
+setter is called. With eight voices this measured at roughly half the audio
+budget and pushed the callback past 100%. The derived values are now cached and
+recomputed only when a setter marks them dirty; only `damping_f`, which
+genuinely varies with `frequency_`, is still computed per sample.
 
 ## Flash
 
