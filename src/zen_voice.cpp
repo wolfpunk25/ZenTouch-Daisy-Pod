@@ -15,6 +15,16 @@ static constexpr float kLongestDecay  = 0.97f; // knob fully counter-clockwise
 static constexpr float kShortestDecay = 0.45f; // knob fully clockwise
 static constexpr float kMinBrightness = 0.05f; // manual: clamped to 0.05-1.00
 
+// A voice is released once its output has sat below this for this long. Without
+// it a voice is only ever freed by being stolen, so the live cap fills up after
+// five notes and stays full no matter how long ago they fell silent.
+static constexpr float kSilenceLevel = 0.0002f; // about -74 dBFS
+static constexpr float kSilenceMs    = 50.0f;
+
+// How quickly the envelope follower tracks the output. Slow enough not to
+// chatter on individual cycles, fast enough to release promptly.
+static constexpr float kLevelCoeff = 0.0005f;
+
 float MapTimbre(float knob, float preset_brightness)
 {
     knob = fclamp(knob, 0.0f, 1.0f);
@@ -94,7 +104,11 @@ void Voice::NoteOn(float freq, float amp, int slot, float timbre, float linger)
 
     fade_gain_  = 1.0f;
     fade_delta_ = 0.0f;
-    active_     = true;
+    // Seed the follower from the trigger amplitude, so a freshly struck voice
+    // is never mistaken for a silent one before it has sounded.
+    level_        = amp_;
+    silent_count_ = 0;
+    active_       = true;
     fading_     = false;
     age_        = 0;
 }
@@ -155,7 +169,13 @@ float Voice::Process()
 
     float exc = ExcitationSample();
     if(shimmer_amt_ > 0.0f)
-        exc += noise_.Process() * shimmer_amt_;
+    {
+        // Scaled by the voice's own level so the sparkle follows the decay.
+        // A constant injection re-excites the string forever and the note
+        // never ends -- on a voice with 0.96 decay it becomes an oscillator.
+        const float ride = fminf(level_ * 2.0f, 1.0f);
+        exc += noise_.Process() * shimmer_amt_ * ride;
+    }
 
     float out = string_.Process(exc);
 
@@ -171,6 +191,22 @@ float Voice::Process()
         // Downward-only: the pulse dips below unity, it never boosts.
         const float depth = kTremoloDepth * 0.5f * (1.0f - lfo_.Process());
         out *= (1.0f - depth);
+    }
+
+    // Track the output level and release the voice once it has gone quiet.
+    level_ += (fabsf(out) - level_) * kLevelCoeff;
+    if(level_ < kSilenceLevel)
+    {
+        if(++silent_count_ > static_cast<uint32_t>(kSilenceMs * 0.001f * sample_rate_))
+        {
+            active_ = false;
+            fading_ = false;
+            return 0.0f;
+        }
+    }
+    else
+    {
+        silent_count_ = 0;
     }
 
     if(fading_)

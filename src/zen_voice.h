@@ -60,6 +60,12 @@ class Voice
     // Steal fade.
     float fade_gain_  = 1.0f;
     float fade_delta_ = 0.0f;
+
+    // Envelope follower, used for two things: releasing the voice once it has
+    // decayed to silence, and scaling the shimmer so it rides the decay rather
+    // than sustaining the string forever.
+    float    level_        = 0.0f;
+    uint32_t silent_count_ = 0;
 };
 
 // Split-curve knob mapping: physical noon is the authored preset value, and the
