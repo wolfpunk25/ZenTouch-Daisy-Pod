@@ -252,6 +252,20 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     cpu_meter.OnBlockEnd();
 }
 
+#if ZEN_DEBUG
+static const char* LoopStateName(LoopState s)
+{
+    switch(s)
+    {
+        case LoopState::Armed: return "ARM";
+        case LoopState::Recording: return "REC";
+        case LoopState::Playing: return "PLAY";
+        case LoopState::Overdubbing: return "DUB";
+        default: return "idle";
+    }
+}
+#endif
+
 // --- MIDI -------------------------------------------------------------------
 
 static void HandleMidi(MidiEvent m)
@@ -330,13 +344,11 @@ int main(void)
                 last_scale = p.scale_slot;
                 last_k1    = k1;
                 pod.seed.PrintLine(
-                    "k1=%d | voice %d %s | scale %d | seen v=%x s=%x | t60ms %d | cpu avg %d max %d %%",
+                    "k1=%d | voice %d %s | scale %d | seen v=%x | loop %s x%d | cpu avg %d max %d %%",
                     k1, p.voice_slot, kVoices[p.voice_slot].name, p.scale_slot,
                     static_cast<int>(ui.VisitedVoices()),
-                    static_cast<int>(ui.VisitedScales()),
-                    static_cast<int>(MapLingerT60(p.linger,
-                                                  kVoices[p.voice_slot].decay_s)
-                                     * 1000.0f),
+                    LoopStateName(looper.State()),
+                    looper.Overdubs(),
                     static_cast<int>(cpu_meter.GetAvgCpuLoad() * 100.0f),
                     static_cast<int>(cpu_meter.GetMaxCpuLoad() * 100.0f));
             }

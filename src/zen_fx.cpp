@@ -7,10 +7,12 @@ using namespace daisysp;
 
 namespace zen
 {
-// The echo lines live in SDRAM. They are small enough to sit in SRAM, but the
-// looper will want the fast internal memory later, so they start out of the way.
-static DelayLine<float, kEchoMaxSamples> DSY_SDRAM_BSS echo_line_l;
-static DelayLine<float, kEchoMaxSamples> DSY_SDRAM_BSS echo_line_r;
+// These sat in SDRAM while it was otherwise unused. Now that the looper reads
+// up to four SDRAM layers per sample, the echo's two accesses per sample are
+// competing for the same bus -- and at 160 KB the pair fits comfortably in the
+// faster internal SRAM, which has room to spare.
+static DelayLine<float, kEchoMaxSamples> echo_line_l;
+static DelayLine<float, kEchoMaxSamples> echo_line_r;
 
 void Fx::Init(float sample_rate)
 {
