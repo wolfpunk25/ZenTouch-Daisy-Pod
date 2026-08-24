@@ -103,6 +103,14 @@ make program-dfu
 or drag `build/ZenTouchPod.bin` into the
 [Daisy Web Programmer](https://electro-smith.github.io/Programmer/).
 
+## Performance
+
+Measured with `CpuLoadMeter` at 48kHz, 48-sample block, eight voices busy:
+**54% average, 64% peak**. Before caching the `KarplusString` damping
+coefficients this peaked at 101%, which overran the audio callback and locked
+the firmware up — the LEDs froze with it, since they update inside that
+callback.
+
 ## Status
 
 Implemented: 8 voice presets with their character features, the 12-scale Zen
