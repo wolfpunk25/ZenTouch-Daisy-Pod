@@ -61,6 +61,10 @@ class Voice
     float fade_gain_  = 1.0f;
     float fade_delta_ = 0.0f;
 
+    // Amplitude envelope that actually sets the decay time.
+    float env_       = 1.0f;
+    float env_coeff_ = 1.0f;
+
     // Envelope follower, used for two things: releasing the voice once it has
     // decayed to silence, and scaling the shimmer so it rides the decay rather
     // than sustaining the string forever.
@@ -72,7 +76,10 @@ class Voice
 // knob travels away from it in both directions. This is what the manual calls
 // "knob center equals the active voice preset value".
 float MapTimbre(float knob, float preset_brightness);
-float MapLinger(float knob, float preset_damping);
+
+// Returns the target T60 in seconds. Knob centre is the voice's authored decay
+// and the ends reach the manual's 4s and 0.3s.
+float MapLingerT60(float knob, float voice_decay_s);
 
 // Trigger amplitude window from the manual's +/-8 percent humanisation.
 static constexpr float kTrigAmpMin = 0.62f;

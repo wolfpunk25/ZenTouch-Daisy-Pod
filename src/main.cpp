@@ -307,10 +307,13 @@ int main(void)
                 last_scale = p.scale_slot;
                 last_k1    = k1;
                 pod.seed.PrintLine(
-                    "k1=%d | voice %d %s | scale %d | seen v=%x s=%x | cpu avg %d max %d %%",
+                    "k1=%d | voice %d %s | scale %d | seen v=%x s=%x | t60ms %d | cpu avg %d max %d %%",
                     k1, p.voice_slot, kVoices[p.voice_slot].name, p.scale_slot,
                     static_cast<int>(ui.VisitedVoices()),
                     static_cast<int>(ui.VisitedScales()),
+                    static_cast<int>(MapLingerT60(p.linger,
+                                                  kVoices[p.voice_slot].decay_s)
+                                     * 1000.0f),
                     static_cast<int>(cpu_meter.GetAvgCpuLoad() * 100.0f),
                     static_cast<int>(cpu_meter.GetMaxCpuLoad() * 100.0f));
             }

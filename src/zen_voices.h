@@ -25,21 +25,43 @@ struct VoicePreset
 {
     const char* name;
     float       brightness; // Timbre centre
-    float       damping;    // Linger centre
+    float       damping;    // the manual's figure, kept for reference only
+    float       decay_s;    // authored T60 in seconds -- Linger centre
     float       nonlin;     // preset-only
     Character   character;
 };
 
+// decay_s is a log interpolation of the manual's damping figures across
+// 0.8s (most damped, Stillness at 0.40) to 3.5s (least, Hymn at 0.03). The
+// figures themselves could not be used directly: measured against DaisySP's
+// String they land far outside any musical range -- see the note below.
 static constexpr VoicePreset kVoices[kNumVoices] = {
-    {"Stillness", 0.60f, 0.40f,  0.00f, Character::None},
-    {"Breath",    0.50f, 0.30f,  0.00f, Character::PitchDip},
-    {"Daybreak",  0.75f, 0.22f,  0.00f, Character::None},
-    {"Halo",      0.60f, 0.15f, -0.10f, Character::AttackSwell},
-    {"Lullaby",   0.90f, 0.10f,  0.00f, Character::Tremolo},
-    {"Clarity",   1.00f, 0.05f,  0.00f, Character::None},
-    {"Hymn",      1.00f, 0.03f, -0.45f, Character::Vibrato},
-    {"Stardust",  0.95f, 0.04f, -0.25f, Character::Shimmer},
+    {"Stillness", 0.60f, 0.40f, 0.80f,  0.00f, Character::None},
+    {"Breath",    0.50f, 0.30f, 1.19f,  0.00f, Character::PitchDip},
+    {"Daybreak",  0.75f, 0.22f, 1.62f,  0.00f, Character::None},
+    {"Halo",      0.60f, 0.15f, 2.15f, -0.10f, Character::AttackSwell},
+    {"Lullaby",   0.90f, 0.10f, 2.59f,  0.00f, Character::Tremolo},
+    {"Clarity",   1.00f, 0.05f, 3.25f,  0.00f, Character::None},
+    {"Hymn",      1.00f, 0.03f, 3.50f, -0.45f, Character::Vibrato},
+    {"Stardust",  0.95f, 0.04f, 3.37f, -0.25f, Character::Shimmer},
 };
+
+// Decay is set by an explicit amplitude envelope, not by the string's own loss.
+//
+// Measured on a host build of DaisySP's String: its natural T60 depends far
+// more on brightness and pitch than on the damping parameter -- 2.0s to 18s
+// across the brightness range at fixed damping, and 13.7s at A1 against 2.4s at
+// C5 for identical settings. Decay was therefore a side effect of timbre and
+// pitch rather than something Linger controlled, and every voice's authored
+// value landed in a region where notes effectively never stopped.
+//
+// The string is now run at a fixed damping chosen so it always outlasts the
+// envelope, and the envelope alone defines T60. The one corner where the string
+// still runs out first is the dullest timbre at the top of the range: 3.35s
+// against a 4s target.
+static constexpr float kToneDamping  = 0.70f;
+static constexpr float kLongestT60   = 4.0f; // Linger fully counter-clockwise
+static constexpr float kShortestT60  = 0.3f; // Linger fully clockwise
 
 // Character feature constants.
 //

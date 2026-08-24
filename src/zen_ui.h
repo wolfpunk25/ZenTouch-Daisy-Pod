@@ -2,6 +2,7 @@
 #include "daisy_pod.h"
 #include "zen_scales.h"
 #include "zen_voices.h"
+#include "zen_looper.h"
 
 namespace zen
 {
@@ -58,6 +59,21 @@ struct Params
     OctaveShift  octave   = OctaveShift::Base;
 };
 
+// One block's worth of looper gestures. The Touch 2 drives its looper from a
+// dedicated pad plus two silent modifiers; the Pod has none spare, so the
+// encoder stands in for P01 and the two buttons for P10 and P11. Buttons act as
+// modifiers when the encoder is clicked while one is held, and fall back to
+// their octave/interval duty on release when it was not.
+struct Gestures
+{
+    bool tap         = false; // P01 alone
+    bool hold_mute   = false; // P01 held 1.5s
+    bool stop_resume = false; // P10 + P01
+    bool remove_last = false; // P11 + P01
+    bool clear       = false; // P10 + P11 held 2s
+    bool panic       = false; // both buttons, released quickly
+};
+
 class Ui
 {
   public:
@@ -78,6 +94,16 @@ class Ui
 
     // Momentary white flash on LED 2 whenever a note fires.
     void NoteFlash() { note_flash_ = 1.0f; }
+
+    const Gestures& gestures() const { return gestures_; }
+
+    // The looper's state drives LED 1, and decides whether an encoder press
+    // fires immediately or waits to be disambiguated from a hold.
+    void SetLooperState(LoopState s, int overdubs)
+    {
+        loop_state_    = s;
+        loop_overdubs_ = overdubs;
+    }
 
     // True for one Update() when the encoder was clicked (all-notes-off).
     bool PanicRequested() const { return panic_; }
@@ -100,6 +126,19 @@ class Ui
     float note_flash_ = 0.0f;
     float page_flash_ = 0.0f;
     bool  panic_      = false;
+
+    Gestures  gestures_;
+    LoopState loop_state_    = LoopState::Idle;
+    int       loop_overdubs_ = 0;
+
+    // Modifier bookkeeping: a button that acted as a modifier must not also
+    // fire its own action when released.
+    bool b1_consumed_ = false, b2_consumed_ = false;
+    bool combo_active_ = false, combo_fired_ = false;
+    bool enc_deferred_ = false, enc_hold_fired_ = false;
+
+    float    clear_progress_ = 0.0f; // 0..1 through the 2s clear hold
+    uint32_t tick_           = 0;    // Update() calls, ~1 per ms
 };
 
 // Discrete slot selection with hysteresis, shared by the voice and scale knobs.

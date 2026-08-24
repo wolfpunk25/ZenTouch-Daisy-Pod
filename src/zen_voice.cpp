@@ -7,12 +7,6 @@ using namespace daisysp;
 
 namespace zen
 {
-// DaisySP's String takes a *decay* parameter: higher values ring longer, and
-// anything at or above 0.95 heads towards infinite sustain. The manual's
-// per-voice "damping" figure runs the other way (higher = more damped), which
-// is why Clarity at 0.05 is the drone-like one. Invert on the way in.
-static constexpr float kLongestDecay  = 0.97f; // knob fully counter-clockwise
-static constexpr float kShortestDecay = 0.45f; // knob fully clockwise
 static constexpr float kMinBrightness = 0.05f; // manual: clamped to 0.05-1.00
 
 // A voice is released once its output has sat below this for this long. Without
@@ -35,13 +29,17 @@ float MapTimbre(float knob, float preset_brightness)
            + (1.0f - preset_brightness) * ((knob - 0.5f) * 2.0f);
 }
 
-float MapLinger(float knob, float preset_damping)
+float MapLingerT60(float knob, float voice_decay_s)
 {
-    knob            = fclamp(knob, 0.0f, 1.0f);
-    const float mid = 1.0f - preset_damping;
+    knob = fclamp(knob, 0.0f, 1.0f);
+    // Interpolated in log-time so the knob feels even across its travel.
     if(knob < 0.5f)
-        return mid + (kLongestDecay - mid) * (1.0f - knob * 2.0f);
-    return mid - (mid - kShortestDecay) * ((knob - 0.5f) * 2.0f);
+    {
+        const float u = 1.0f - knob * 2.0f; // 0 at centre, 1 counter-clockwise
+        return voice_decay_s * powf(kLongestT60 / voice_decay_s, u);
+    }
+    const float u = (knob - 0.5f) * 2.0f;   // 0 at centre, 1 clockwise
+    return voice_decay_s * powf(kShortestT60 / voice_decay_s, u);
 }
 
 void Voice::Init(float sample_rate)
@@ -75,7 +73,12 @@ void Voice::NoteOn(float freq, float amp, int slot, float timbre, float linger)
     string_.SetFreq(freq);
     string_.SetNonLinearity(p.nonlin);
     string_.SetBrightness(MapTimbre(timbre, p.brightness));
-    string_.SetDamping(MapLinger(linger, p.damping));
+    string_.SetDamping(kToneDamping);
+
+    // -60 dB over the target T60, applied per sample.
+    const float t60 = MapLingerT60(linger, p.decay_s);
+    env_            = 1.0f;
+    env_coeff_      = expf(-6.907755f / (t60 * sample_rate_));
 
     // One period of noise, low-passed in sympathy with the brightness, is the
     // standard Karplus-Strong pluck excitation.
@@ -192,6 +195,9 @@ float Voice::Process()
         const float depth = kTremoloDepth * 0.5f * (1.0f - lfo_.Process());
         out *= (1.0f - depth);
     }
+
+    env_ *= env_coeff_;
+    out *= env_;
 
     // Track the output level and release the voice once it has gone quiet.
     level_ += (fabsf(out) - level_) * kLevelCoeff;
