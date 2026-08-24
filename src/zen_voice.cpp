@@ -87,9 +87,9 @@ void Voice::NoteOn(float freq, float amp, int slot, float timbre, float linger)
     shimmer_amt_   = (character_ == Character::Shimmer) ? kShimmerAmount : 0.0f;
 
     if(character_ == Character::Tremolo)
-        lfo_.SetFreq(kTremoloHz);
+        lfo_.SetFreq(kTremoloHz); // advanced every sample
     else if(character_ == Character::Vibrato)
-        lfo_.SetFreq(kVibratoHz);
+        lfo_.SetFreq(kVibratoHz * kPitchUpdateInterval); // advanced every Nth
     lfo_.Reset();
 
     fade_gain_  = 1.0f;
@@ -127,8 +127,11 @@ float Voice::Process()
     age_++;
     feature_phase_ += one_over_sr_;
 
-    // Features that bend pitch have to be applied before the string runs.
-    switch(character_)
+    // Features that bend pitch have to be applied before the string runs. They
+    // are throttled to every kPitchUpdateInterval samples -- see the note on
+    // that constant for why.
+    const bool update_pitch = (age_ % kPitchUpdateInterval) == 0;
+    switch(update_pitch ? character_ : Character::None)
     {
         case Character::PitchDip:
         {

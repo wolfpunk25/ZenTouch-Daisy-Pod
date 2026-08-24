@@ -62,4 +62,15 @@ static constexpr float kVibratoRampMs   = 120.0f;
 // level builds rather than settling. Sanitize() now bounds it either way.
 static constexpr float kShimmerAmount   = 0.035f;
 
+// Pitch modulation is recomputed once every N samples rather than every sample.
+// powf is expensive and DaisySP's String already spends two of them plus an
+// atanf per sample per voice; adding a third for vibrato was pushing the audio
+// callback over budget once the pool grew to eight.
+//
+// At 48kHz this still updates pitch at 1.5kHz, against a 5.5Hz vibrato and a
+// 170ms dip -- hundreds of steps per cycle, so nothing is audibly stepped. The
+// vibrato LFO is clocked at kVibratoHz * this interval to compensate for being
+// advanced once per block of N rather than once per sample.
+static constexpr int kPitchUpdateInterval = 32;
+
 } // namespace zen

@@ -4,6 +4,7 @@
 #include "zen_fx.h"
 #include "zen_ui.h"
 #include "zen_scales.h"
+#include "util/CpuLoadMeter.h"
 #include <cstdlib>
 
 // Set to 1 to report knob positions and slot selections over USB serial. Off by
@@ -36,6 +37,7 @@ static DaisyPod pod;
 static Voice    voices[kVoicePool];
 static Fx       fx;
 static Ui       ui;
+static CpuLoadMeter cpu_meter;
 
 // Main loop parses MIDI; the audio callback owns the voices. A tiny
 // single-producer/single-consumer queue hands notes across so the two never
@@ -176,6 +178,8 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
                           AudioHandle::OutputBuffer out,
                           size_t                    size)
 {
+    cpu_meter.OnBlockStart();
+
     ui.Update();
 
     if(ui.PanicRequested())
@@ -209,6 +213,8 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         out[0][i] = l;
         out[1][i] = r;
     }
+
+    cpu_meter.OnBlockEnd();
 }
 
 // --- MIDI -------------------------------------------------------------------
@@ -255,6 +261,8 @@ int main(void)
     fx.Init(sr);
     ui.Init(&pod);
 
+    cpu_meter.Init(pod.AudioSampleRate(), pod.AudioBlockSize());
+
     pod.StartAdc();
     pod.StartAudio(AudioCallback);
     pod.midi.StartReceive();
@@ -280,18 +288,18 @@ int main(void)
             last_report      = now;
             const Params& p  = ui.params();
             const int     k1 = static_cast<int>(pod.GetKnobValue(DaisyPod::KNOB_1) * 1000.0f);
-            const int     k2 = static_cast<int>(pod.GetKnobValue(DaisyPod::KNOB_2) * 1000.0f);
-            if(p.voice_slot != last_voice || p.scale_slot != last_scale
-               || k1 != last_k1)
+            if(true)
             {
                 last_voice = p.voice_slot;
                 last_scale = p.scale_slot;
                 last_k1    = k1;
-                pod.seed.PrintLine("k1=%d k2=%d | voice %d %s | scale %d | seen v=%x s=%x",
-                                   k1, k2, p.voice_slot, kVoices[p.voice_slot].name,
-                                   p.scale_slot,
-                                   static_cast<int>(ui.VisitedVoices()),
-                                   static_cast<int>(ui.VisitedScales()));
+                pod.seed.PrintLine(
+                    "k1=%d | voice %d %s | scale %d | seen v=%x s=%x | cpu avg %d max %d %%",
+                    k1, p.voice_slot, kVoices[p.voice_slot].name, p.scale_slot,
+                    static_cast<int>(ui.VisitedVoices()),
+                    static_cast<int>(ui.VisitedScales()),
+                    static_cast<int>(cpu_meter.GetAvgCpuLoad() * 100.0f),
+                    static_cast<int>(cpu_meter.GetMaxCpuLoad() * 100.0f));
             }
         }
 #endif
