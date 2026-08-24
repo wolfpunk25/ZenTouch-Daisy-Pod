@@ -32,8 +32,28 @@ static inline int16_t AddS16(int16_t a, int16_t b)
     return static_cast<int16_t>(sum);
 }
 
+void Looper::ZeroSpan(int layer, size_t from, size_t to)
+{
+    if(length_ == 0)
+        return;
+    size_t i = from;
+    while(i != to)
+    {
+        loop_buf[layer][i] = 0;
+        if(++i >= length_)
+            i = 0;
+    }
+}
+
 void Looper::Init()
 {
+    // SDRAM comes up holding whatever was there before -- the startup code does
+    // not clear it, and 23 MB would be far too slow to clear in the callback.
+    // Doing it once here means an unwritten sample is silence, not noise.
+    for(int layer = 0; layer < kMaxLayers; layer++)
+        for(size_t i = 0; i < kLoopMaxSamples; i++)
+            loop_buf[layer][i] = 0;
+
     state_     = LoopState::Idle;
     pos_       = 0;
     length_    = 0;
@@ -68,6 +88,14 @@ void Looper::CloseRecording()
 
 void Looper::CommitOverdub()
 {
+    const int layer = overdubs_ + 1;
+
+    // Committed before the take had come all the way round: whatever it did not
+    // reach still holds the previous take's audio, so clear it rather than let
+    // it play back as part of this layer.
+    if(overdub_first_pass_)
+        ZeroSpan(layer, pos_, overdub_start_pos_);
+
     if(overdub_had_audio_)
         overdubs_++;
     state_ = LoopState::Playing;
@@ -95,7 +123,8 @@ void Looper::Tap()
             if(overdubs_ >= kMaxOverdubs)
                 break; // no-op once all three overdubs exist
             state_              = LoopState::Overdubbing;
-            overdub_revolution_ = 0;
+            overdub_start_pos_  = pos_;
+            overdub_first_pass_ = true;
             overdub_had_audio_  = false;
             break;
 
@@ -190,7 +219,7 @@ float Looper::Process(float live_dry)
             if(state_ == LoopState::Overdubbing)
             {
                 const int layer = overdubs_ + 1;
-                if(overdub_revolution_ == 0)
+                if(overdub_first_pass_)
                 {
                     // First time round, overwrite whatever this layer held from
                     // a previous take. Nothing has been captured at this
@@ -211,11 +240,12 @@ float Looper::Process(float live_dry)
 
             pos_++;
             if(pos_ >= length_)
-            {
                 pos_ = 0;
-                if(state_ == LoopState::Overdubbing)
-                    overdub_revolution_++;
-            }
+
+            // The first pass ends when the take arrives back where it began.
+            if(state_ == LoopState::Overdubbing && overdub_first_pass_
+               && pos_ == overdub_start_pos_)
+                overdub_first_pass_ = false;
 
             return Sanitize(out);
         }

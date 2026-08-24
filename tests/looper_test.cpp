@@ -92,6 +92,44 @@ int main()
     for(int i=0;i<4;i++){ lp.Tap(); Run(4800,0.2f); lp.Tap(); }
     CHK("stops at 3 overdubs", lp.Overdubs()==3);
 
+    printf("overdub starting mid-loop\n");
+    // An overdub begins wherever playback happens to be. If the take's first
+    // pass is tracked by loop wraps rather than from that point, everything
+    // between the loop start and it gets summed onto whatever the layer held
+    // before -- stale audio, or uninitialised SDRAM as static.
+    lp.Clear();
+    lp.Tap(); lp.NotePlayed(); Run(4800, 0.5f); lp.Tap();   // base = 0.5
+    CHK("base recorded", lp.Length()==4800 && lp.State()==LoopState::Playing);
+
+    lp.Tap(); Run(4800, 0.25f); lp.Tap();                   // take A into layer 1
+    CHK("take A committed", lp.Overdubs()==1);
+    lp.RemoveLast();
+    CHK("take A removed, layer still holds its audio", lp.Overdubs()==0);
+
+    Run(2000, 0.0f);                                        // park playback mid-loop
+    lp.Tap();                                               // take B starts at 2000
+    CHK("take B overdubbing", lp.State()==LoopState::Overdubbing);
+    Run(4800, 0.10f);                                       // exactly one pass
+    lp.Tap();
+    CHK("take B committed", lp.Overdubs()==1);
+
+    // One full revolution of playback should be base + take B everywhere.
+    // If take A leaked back in, part of the loop reads higher.
+    float lo = 1e9f, hi = -1e9f;
+    for(int i = 0; i < 4800; i++) { float v = lp.Process(0.0f); if(v<lo) lo=v; if(v>hi) hi=v; }
+    CHK("playback is uniform across the loop", fabsf(hi-lo) < 0.02f);
+    CHK("removed take A did not leak back in", hi < 0.70f);
+
+    printf("commit before the pass completes\n");
+    lp.Clear();
+    lp.Tap(); lp.NotePlayed(); Run(4800, 0.5f); lp.Tap();
+    lp.Tap(); Run(4800, 0.30f); lp.Tap();                   // full take
+    lp.RemoveLast();
+    lp.Tap(); Run(1000, 0.20f); lp.Tap();                   // commit after 1000 of 4800
+    lo = 1e9f; hi = -1e9f;
+    for(int i = 0; i < 4800; i++) { float v = lp.Process(0.0f); if(v<lo) lo=v; if(v>hi) hi=v; }
+    CHK("uncovered remainder cleared, not left holding old audio", hi < 0.80f);
+
     printf("\n%s\n", fails? "SOME CHECKS FAILED" : "all checks passed");
     return fails;
 }

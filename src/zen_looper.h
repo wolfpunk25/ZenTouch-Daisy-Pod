@@ -58,6 +58,8 @@ class Looper
   private:
     void CloseRecording();
     void CommitOverdub();
+    // Zero [from, to) within a layer, wrapping at the loop length.
+    void ZeroSpan(int layer, size_t from, size_t to);
 
     LoopState state_     = LoopState::Idle;
     size_t    pos_       = 0;
@@ -65,10 +67,16 @@ class Looper
     int       overdubs_  = 0;   // committed overdub layers, 0..3
     bool      mute_last_ = false;
 
-    // Overdub bookkeeping. The first revolution writes and later ones sum, so
-    // a fresh layer never needs its several megabytes zeroed in the callback.
-    uint32_t overdub_revolution_ = 0;
-    bool     overdub_had_audio_  = false;
+    // Overdub bookkeeping. The take's first pass over each position writes,
+    // and later passes sum -- so a layer never needs megabytes zeroed inside
+    // the audio callback. The pass has to be tracked from where the overdub
+    // actually began, not from the loop's start: an overdub begins wherever
+    // playback happened to be, so counting loop wraps would put every position
+    // between the loop start and that point into sum mode having never written
+    // it, summing this take onto whatever the layer held before.
+    size_t overdub_start_pos_  = 0;
+    bool   overdub_first_pass_ = true;
+    bool   overdub_had_audio_  = false;
 };
 
 } // namespace zen
