@@ -1,4 +1,5 @@
 #include "zen_ui.h"
+#include "daisysp.h"
 #include <cmath>
 
 using namespace daisy;
@@ -9,8 +10,9 @@ namespace zen
 // slot changes. Keeps noon from rattling between two voices.
 static constexpr float kHysteresis = 0.15f;
 
-// How close the knob must come to the stored value before it takes control.
-static constexpr float kCatchWindow = 0.02f;
+// Smallest knob movement that is applied. Below this the reading is left
+// pending, so a slow turn still lands while ADC noise cannot accumulate.
+static constexpr float kKnobQuantum = 0.002f;
 
 int SlotWithHysteresis(float knob, int num_slots, int current)
 {
@@ -36,36 +38,23 @@ int SlotWithHysteresis(float knob, int num_slots, int current)
 void Ui::Init(DaisyPod* pod)
 {
     pod_ = pod;
-    ResetCatch();
+    SyncKnobs();
 }
 
-void Ui::ResetCatch()
+void Ui::SyncKnobs()
 {
-    caught_[0]   = false;
-    caught_[1]   = false;
+    // Take a fresh reference so a page change never applies stale movement.
     last_raw_[0] = pod_ ? pod_->GetKnobValue(DaisyPod::KNOB_1) : 0.0f;
     last_raw_[1] = pod_ ? pod_->GetKnobValue(DaisyPod::KNOB_2) : 0.0f;
 }
 
 void Ui::UpdateKnob(float raw, float* target, int index)
 {
-    if(!caught_[index])
-    {
-        const float stored = *target;
-        const float prev   = last_raw_[index];
-        const bool  near   = fabsf(raw - stored) < kCatchWindow;
-        const bool  crossed
-            = (prev < stored && raw >= stored) || (prev > stored && raw <= stored);
-
-        last_raw_[index] = raw;
-        if(!near && !crossed)
-            return; // knob is somewhere else entirely; ignore it
-
-        caught_[index] = true;
-    }
-
+    const float delta = raw - last_raw_[index];
+    if(fabsf(delta) < kKnobQuantum)
+        return;
     last_raw_[index] = raw;
-    *target          = raw;
+    *target          = daisysp::fclamp(*target + delta, 0.0f, 1.0f);
 }
 
 void Ui::Update()
@@ -87,7 +76,7 @@ void Ui::Update()
         p %= n;
         page_       = static_cast<Page>(p);
         page_flash_ = 1.0f;
-        ResetCatch();
+        SyncKnobs();
     }
     if(pod_->encoder.RisingEdge())
         panic_ = true;

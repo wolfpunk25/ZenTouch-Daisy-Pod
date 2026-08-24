@@ -10,10 +10,12 @@ namespace zen
 // parameters are grouped into four pages of two and the encoder selects the
 // page. LED 1 shows which page you are on.
 //
-// Changing page leaves the physical knobs pointing at the wrong values, so each
-// knob is "uncaught" after a page change and does nothing until it passes
-// through the stored value. That prevents a parameter jumping the moment you
-// touch a knob on a page you have just arrived at.
+// The knobs work *relatively*: turning one adds its movement to the current
+// parameter rather than jumping it to the knob's absolute position. With four
+// pages sharing two knobs the physical position cannot mean anything anyway,
+// and the alternative -- absolute position with a soft-takeover catch -- makes
+// a knob feel dead until it happens to cross the stored value, which is far
+// worse to play than it is to describe.
 
 enum class Page
 {
@@ -111,13 +113,16 @@ class Ui
   private:
     void  UpdateKnob(float raw, float* target, int index);
     void  UpdateLeds();
-    void  ResetCatch();
+    void  SyncKnobs();
 
     daisy::DaisyPod* pod_ = nullptr;
     Params           params_;
     Page             page_ = Page::LingerTimbre;
 
-    bool  caught_[2]   = {false, false};
+    // Last raw reading that was actually applied. Movement smaller than
+    // kKnobQuantum is left unapplied and accumulates here rather than being
+    // discarded, so slow turns still register while ADC jitter cannot make a
+    // parameter drift on its own.
     float last_raw_[2] = {0.0f, 0.0f};
 
     uint32_t visited_voices_ = 0;
