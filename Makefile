@@ -6,7 +6,8 @@ CPP_SOURCES = \
 src/main.cpp \
 src/zen_voice.cpp \
 src/zen_fx.cpp \
-src/zen_ui.cpp
+src/zen_ui.cpp \
+src/zen_looper.cpp
 
 C_INCLUDES += -Isrc
 

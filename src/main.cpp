@@ -4,6 +4,7 @@
 #include "zen_fx.h"
 #include "zen_ui.h"
 #include "zen_scales.h"
+#include "zen_looper.h"
 #include "util/CpuLoadMeter.h"
 #include <cstdlib>
 
@@ -44,6 +45,7 @@ static DaisyPod pod;
 static Voice    voices[kVoicePool];
 static Fx       fx;
 static Ui       ui;
+static zen::Looper looper;
 static CpuLoadMeter cpu_meter;
 
 // Main loop parses MIDI; the audio callback owns the voices. A tiny
@@ -182,6 +184,7 @@ static void TriggerNote(int midi_note, float amp)
                        p.linger);
     }
 
+    looper.NotePlayed();
     ui.NoteFlash();
 }
 
@@ -195,9 +198,22 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
 
     ui.Update();
 
-    if(ui.PanicRequested())
+    const Gestures& g = ui.gestures();
+    if(g.tap)
+        looper.Tap();
+    if(g.hold_mute)
+        looper.ToggleMute();
+    if(g.stop_resume)
+        looper.StopResume();
+    if(g.remove_last)
+        looper.RemoveLast();
+    if(g.clear)
+        looper.Clear();
+    if(g.panic)
         for(int i = 0; i < kVoicePool; i++)
             voices[i].FadeOut();
+
+    ui.SetLooperState(looper.State(), looper.Overdubs());
 
     // Drain any notes the MIDI parser queued since the last block.
     while(q_read != q_write)
@@ -221,8 +237,14 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             dry += voices[v].Process();
         dry *= 0.4f; // headroom for five voices before the FX bus
 
+        // The looper records this live mix and returns its own playback. Both
+        // go into the FX bus together, so Resonance, Ambient and Echo re-apply
+        // to the loop live while everything baked into the recording -- voice,
+        // scale, timbre, linger, octave, interval -- travels with the audio.
+        const float loop = looper.Process(dry);
+
         float l, r;
-        fx.Process(dry, in[0][i], in[1][i], &l, &r);
+        fx.Process(dry + loop, in[0][i], in[1][i], &l, &r);
         out[0][i] = l;
         out[1][i] = r;
     }
@@ -273,6 +295,7 @@ int main(void)
         voices[i].Init(sr);
     fx.Init(sr);
     ui.Init(&pod);
+    looper.Init();
 
     cpu_meter.Init(pod.AudioSampleRate(), pod.AudioBlockSize());
 

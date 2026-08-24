@@ -103,6 +103,25 @@ make program-dfu
 or drag `build/ZenTouchPod.bin` into the
 [Daisy Web Programmer](https://electro-smith.github.io/Programmer/).
 
+## Tests
+
+The DSP and the looper state machine are portable C++, so they build and run on
+the development machine with no Daisy attached:
+
+```bash
+make -C tests
+```
+
+`looper_test` checks the state machine against the spec's gesture table —
+arming, the clock starting on the first note, overdub commit and discard, mute,
+remove-last, park and resume, the documented parked-loop wipe, and the
+three-overdub ceiling. `voices_probe` reports measured T60, peak level and a
+brightness proxy for all eight voices.
+
+This is worth reaching for first. Measuring here is what identified the decay
+bug and confirmed the eight voices really were distinct, in both cases after
+reasoning about the code had produced confident wrong answers.
+
 ## Performance
 
 Measured with `CpuLoadMeter` at 48kHz, 48-sample block, eight voices busy:
@@ -118,8 +137,22 @@ Arc, 5-voice polyphony with 30 ms steal fades, ±8% trigger humanisation,
 scale-aware interval doubling, octave shift, the resonance / ambient / echo /
 limiter FX bus, stereo line-in summing, and MIDI note input.
 
-Not implemented: the audio-buffer looper and the QSPI calibration flow. The
-calibration exists to correct Touch 2 pot tolerance and is largely moot with two
-knobs. The looper needs roughly 23 MB of SDRAM (there is plenty) but the build
-is already at 87% of the 128 KB internal flash, so it will want the Daisy
-bootloader and a QSPI build.
+The audio-buffer looper is implemented: base layer plus three overdubs, up to
+60 s each, ~23 MB of SDRAM. The encoder stands in for the Touch 2's P01 pad and
+the two buttons for its P10 and P11 modifiers, so the gesture set maps one to
+one. Buttons keep their octave and interval duties on a plain press-and-release
+and act as modifiers only when the encoder is clicked while one is held.
+
+| Touch 2 | Daisy Pod |
+| --- | --- |
+| P01 tap | encoder click |
+| P01 hold 1.5 s | encoder hold |
+| P10 + P01 | button 1 + encoder click |
+| P11 + P01 | button 2 + encoder click |
+| P10 + P11 hold 2 s | both buttons, 2 s |
+
+All-notes-off moved to a quick both-button press, since the encoder click is
+now the looper button.
+
+Not implemented: the QSPI calibration flow, which exists to correct Touch 2 pot
+tolerance and is moot with two knobs.
