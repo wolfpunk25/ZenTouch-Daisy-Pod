@@ -33,6 +33,13 @@ static constexpr int kLiveVoices = 5; // cap on non-fading voices
 static constexpr int kVoicePool  = 8; // physical slots, including fade-outs
 static constexpr int kRootNote  = 48; // C3, the Touch 2's tine-0 root
 
+// DaisySP's String clamps its delay line to kDelayLineSize - 4 = 1020 samples,
+// which puts its lowest true pitch at 48000/1020 ~= 47Hz, just under MIDI 31.
+// Below that the clamp holds the pitch flat, so every low note sounds the same
+// rather than descending. Octave-down makes that reachable from MIDI 43 on an
+// ordinary keyboard, so notes are folded up into range instead.
+static constexpr int kMinPlayableNote = 33;
+
 static DaisyPod pod;
 static Voice    voices[kVoicePool];
 static Fx       fx;
@@ -105,9 +112,13 @@ static Voice* AllocateVoice()
         if(!voices[i].IsActive())
             return &voices[i];
 
-    // Every physical slot is mid-fade. Take the oldest; NoteOn resets the
-    // string, so the worst case is a small click rather than a dropped note.
-    const int idx = OldestVoice([](const Voice& v) { return v.IsActive(); });
+    // Every physical slot is busy. Prefer one that is already fading, since it
+    // is on its way out anyway -- otherwise we could steal back the very voice
+    // we just sent into its fade above and cut it abruptly. NoteOn resets the
+    // string either way, so the worst case is a small click, not a lost note.
+    int idx = OldestVoice([](const Voice& v) { return v.IsFading(); });
+    if(idx < 0)
+        idx = OldestVoice([](const Voice& v) { return v.IsActive(); });
     return (idx >= 0) ? &voices[idx] : &voices[0];
 }
 
@@ -145,6 +156,8 @@ static void TriggerNote(int midi_note, float amp)
 
     int note = QuantizeToScale(midi_note, s);
     note += static_cast<int>(p.octave) * 12;
+    while(note < kMinPlayableNote)
+        note += 12;
 
     Voice* v = AllocateVoice();
     if(v)
