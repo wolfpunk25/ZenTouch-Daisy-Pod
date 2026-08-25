@@ -308,12 +308,29 @@ int main(void)
     for(int i = 0; i < kVoicePool; i++)
         voices[i].Init(sr);
     fx.Init(sr);
-    ui.Init(&pod);
     looper.Init();
 
     cpu_meter.Init(pod.AudioSampleRate(), pod.AudioBlockSize());
 
     pod.StartAdc();
+
+    // Settle the knobs before the UI takes its reference off them, and start
+    // the ADC before it rather than after.
+    //
+    // Ui::Init() calls SyncKnobs(), which reads both pots — so with the ADC not
+    // yet running it was storing zero, and the ramp up to wherever the pots
+    // actually sat then accumulated straight into whichever page's two
+    // parameters were current. The Pod's pots come through a smoothed
+    // AnalogControl whose filter starts at zero and needs a few hundred passes
+    // to arrive, and the knob quantum is no defence: a monotonic ramp
+    // accumulates through it exactly as a slow deliberate turn does.
+    //
+    // Found on the Audrey II port, whose hardware log showed it plainly.
+    for(uint32_t t0 = System::GetNow(); System::GetNow() - t0 < 200;)
+        pod.ProcessAllControls();
+
+    ui.Init(&pod);
+
     pod.StartAudio(AudioCallback);
     pod.midi.StartReceive();
 
